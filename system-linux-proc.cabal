@@ -29,6 +29,7 @@ library
                      , System.Linux.Proc.IO
                      , System.Linux.Proc.MemInfo
                      , System.Linux.Proc.Process
+                     , System.Linux.Proc.Process.Maps
                      , System.Linux.Proc.Tcp
 
   build-depends:       base                          >= 4.8         && < 5.0
