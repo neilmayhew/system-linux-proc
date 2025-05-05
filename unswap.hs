@@ -11,7 +11,8 @@ import Control.Exception (IOException, handle)
 import Control.Monad (unless, void, when)
 import Data.Binary.Get (getWord64host, runGet)
 import Data.Bits ((.&.), testBit)
-import Data.Foldable (for_)
+import Data.Foldable (find, for_)
+import Data.Maybe (catMaybes, fromMaybe)
 import Options.Applicative
 import System.Linux.Proc.Errors (ProcError (..), renderProcError)
 import System.Linux.Proc.Process.Maps
@@ -69,10 +70,10 @@ main = do
           let totalBytes = sum $ regionSize . mapAddress . smapMap <$> swappedSmaps
               swappedBytes = sum $ smapSwap <$> swappedSmaps
           when optVerbose $
-            printf "Reading %d bytes of process %d (%d bytes swapped, %.1f%%)\n"
-              totalBytes
+            printf "Reading %s bytes of process %d (%s bytes swapped, %.1f%%)\n"
+              (showHuman 1 $ fromIntegral totalBytes)
               (unProcessId pid)
-              swappedBytes
+              (showHuman 1 $ fromIntegral swappedBytes)
               (fromIntegral swappedBytes / fromIntegral totalBytes * 100 :: Double)
           unswapProcessRegions pid swappedSmaps
 
@@ -82,6 +83,15 @@ isNotFoundError _ = False
 
 regionSize :: Num n => (n, n) -> n
 regionSize (from, to) = to - from
+
+showHuman :: Int -> Double -> String
+showHuman precision number = printf "%.*g%s" precision n (catMaybes [q])
+  where
+    n = number / m
+    (m, q) = fromMaybe (last scales) $ find ((abs number >=) . fst) scales
+    qualifiers = map Just "YZEPTGMK" ++ [Nothing] ++ map Just "munpfazy"
+    multipliers = iterate (/1024) (1024^(8::Int))
+    scales = zip multipliers qualifiers
 
 -- Find swapped pages via `pagemap` and read the first byte of each via `mem`
 unswapProcessRegions :: ProcessId -> [Smap] -> IO ()
