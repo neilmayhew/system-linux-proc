@@ -32,6 +32,7 @@ import qualified System.Console.Terminal.Size as TS
 
 data Options = Options
   { optVerbose :: Bool
+  , optNoop :: Bool
   , optProcesses :: [ProcessId]
   } deriving (Show)
 
@@ -47,6 +48,9 @@ main = do
           optVerbose <- switch $
             short 'v' <> long "verbose" <>
             help "Produce verbose output"
+          optNoop <- switch $
+            short 'n' <> long "noop" <>
+            help "Just show what would be done"
           optProcesses <- many . fmap ProcessId . argument auto $
             metavar "PID ..." <>
             help "Processes to unswap (default: all processes)"
@@ -72,12 +76,14 @@ main = do
           let totalBytes = sum $ regionSize . mapAddress . smapMap <$> swappedSmaps
               swappedBytes = sum $ smapSwap <$> swappedSmaps
           when optVerbose $
-            printf "Reading %s bytes of process %d (%s bytes swapped, %.1f%%)\n"
+            printf "%s %s bytes of process %d (%s bytes swapped, %.1f%%)\n"
+              (if optNoop then "Would read" else "Reading" :: String)
               (showHuman 3 $ fromIntegral totalBytes)
               (unProcessId pid)
               (showHuman 3 $ fromIntegral swappedBytes)
               (fromIntegral swappedBytes / fromIntegral totalBytes * 100 :: Double)
-          unswapProcessRegions pid swappedSmaps
+          unless optNoop $
+            unswapProcessRegions pid swappedSmaps
 
 isNotFoundError :: ProcError -> Bool
 isNotFoundError (ProcReadError _ txt) = "does not exist" `T.isInfixOf` txt
