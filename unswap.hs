@@ -11,8 +11,10 @@ import Control.Exception (IOException, handle)
 import Control.Monad (unless, void, when)
 import Data.Binary.Get (getWord64host, runGet)
 import Data.Bits ((.&.), testBit)
+import Data.Char (intToDigit)
 import Data.Foldable (find, for_)
-import Data.Maybe (catMaybes, fromMaybe)
+import Data.Maybe (fromMaybe, maybeToList)
+import Numeric (floatToDigits)
 import Options.Applicative
 import System.Linux.Proc.Errors (ProcError (..), renderProcError)
 import System.Linux.Proc.Process.Maps
@@ -71,9 +73,9 @@ main = do
               swappedBytes = sum $ smapSwap <$> swappedSmaps
           when optVerbose $
             printf "Reading %s bytes of process %d (%s bytes swapped, %.1f%%)\n"
-              (showHuman 1 $ fromIntegral totalBytes)
+              (showHuman 3 $ fromIntegral totalBytes)
               (unProcessId pid)
-              (showHuman 1 $ fromIntegral swappedBytes)
+              (showHuman 3 $ fromIntegral swappedBytes)
               (fromIntegral swappedBytes / fromIntegral totalBytes * 100 :: Double)
           unswapProcessRegions pid swappedSmaps
 
@@ -85,8 +87,12 @@ regionSize :: Num n => (n, n) -> n
 regionSize (from, to) = to - from
 
 showHuman :: Int -> Double -> String
-showHuman precision number = printf "%.*g%s" precision n (catMaybes [q])
+showHuman precision number = int <> point <> frac <> maybeToList q
   where
+    (digits, expnt) = floatToDigits 10 n
+    (significant, _rounding) = splitAt precision $ digits <> repeat 0
+    (int, frac) = splitAt expnt $ intToDigit <$> significant
+    point = if null frac then "" else "."
     n = number / m
     (m, q) = fromMaybe (last scales) $ find ((abs number >=) . fst) scales
     qualifiers = map Just "YZEPTGMK" ++ [Nothing] ++ map Just "munpfazy"
