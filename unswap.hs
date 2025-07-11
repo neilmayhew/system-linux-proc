@@ -12,8 +12,11 @@ import Control.Monad (unless, void, when)
 import Data.Binary.Get (getWord64host, runGet)
 import Data.Bits ((.&.), testBit)
 import Data.Char (intToDigit)
+import Data.Either (partitionEithers)
 import Data.Foldable (find, for_)
+import Data.List (sortOn)
 import Data.Maybe (fromMaybe, maybeToList)
+import Data.Ord (Down (..))
 import Numeric (floatToDigits)
 import Options.Applicative
 import System.Linux.Proc.Errors (ProcError (..), renderProcError)
@@ -65,25 +68,26 @@ main = do
 
   smapResults <- traverse readProcSmaps pids
 
-  for_ (zip pids smapResults) $ \(pid, result) ->
-    case result of
-      Left err -> do
-        unless (isNotFoundError err) $
-          T.hPutStrLn stderr $ renderProcError err
-      Right smaps -> do
-        let swappedSmaps = filter ((0 /=) . smapSwap) smaps
-        unless (null swappedSmaps) $ do
-          let totalBytes = sum $ regionSize . mapAddress . smapMap <$> swappedSmaps
-              swappedBytes = sum $ smapSwap <$> swappedSmaps
-          when optVerbose $
-            printf "%s %s bytes of process %d (%s bytes swapped, %.1f%%)\n"
-              (if optNoop then "Would read" else "Reading" :: String)
-              (showHuman 3 $ fromIntegral totalBytes)
-              (unProcessId pid)
-              (showHuman 3 $ fromIntegral swappedBytes)
-              (fromIntegral swappedBytes / fromIntegral totalBytes * 100 :: Double)
-          unless optNoop $
-            unswapProcessRegions pid swappedSmaps
+  let (errs, pidSmaps) = partitionEithers $ zipWith (fmap . (,)) pids smapResults
+
+  for_ errs $ \err ->
+    unless (isNotFoundError err) $
+      T.hPutStrLn stderr $ renderProcError err
+
+  for_ (sortOn (Down . sum . map smapSwap . snd) pidSmaps) $ \(pid, smaps) -> do
+    let swappedSmaps = filter ((0 /=) . smapSwap) smaps
+    unless (null swappedSmaps) $ do
+      let totalBytes = sum $ regionSize . mapAddress . smapMap <$> swappedSmaps
+          swappedBytes = sum $ smapSwap <$> swappedSmaps
+      when optVerbose $
+        printf "%s %s bytes of process %d (%s bytes swapped, %.1f%%)\n"
+          (if optNoop then "Would read" else "Reading" :: String)
+          (showHuman 3 $ fromIntegral totalBytes)
+          (unProcessId pid)
+          (showHuman 3 $ fromIntegral swappedBytes)
+          (fromIntegral swappedBytes / fromIntegral totalBytes * 100 :: Double)
+      unless optNoop $
+        unswapProcessRegions pid swappedSmaps
 
 isNotFoundError :: ProcError -> Bool
 isNotFoundError (ProcReadError _ txt) = "does not exist" `T.isInfixOf` txt
