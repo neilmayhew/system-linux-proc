@@ -13,7 +13,9 @@
     flake-utils.lib.simpleFlake {
       inherit self nixpkgs name;
       overlay = final: prev: {
-        "${name}".defaultPackage = final.haskell.packages.${compiler}.callPackage ./default.nix {};
+        "${name}".defaultPackage =
+          final.haskell.lib.justStaticExecutables
+            (final.haskell.packages.${compiler}.callPackage ./default.nix {});
       };
       shell = { pkgs }: pkgs.${name}.defaultPackage.env;
     };
